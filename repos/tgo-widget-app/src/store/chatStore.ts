@@ -137,8 +137,21 @@ function toJSONRenderParts(patches: Record<string, unknown>[]): JSONRenderPatchP
 }
 
 function mapHistoryToChatMessage(m: WuKongIMMessage, myUid?: string): ChatMessage {
+  // Priority 0: Use event_meta.events main channel snapshot (new Stream API v2)
+  let streamContent: string | undefined
+  if (m?.event_meta?.has_events) {
+    const mainEvent = m.event_meta.events?.find(e => e.event_key === 'main')
+    if (mainEvent?.snapshot?.kind === 'text' && mainEvent.snapshot.text) {
+      streamContent = mainEvent.snapshot.text
+    }
+  }
+  // Priority 1: Legacy stream_data
   const isStreamEnded = m?.setting_flags?.stream === true && m?.end === 1 && typeof m?.stream_data === 'string' && m.stream_data.length > 0
-  const payload: MessagePayload = isStreamEnded ? { type: 1, content: m.stream_data as string } : toPayloadFromAny(m?.payload)
+  const payload: MessagePayload = streamContent
+    ? { type: 1, content: streamContent }
+    : isStreamEnded
+      ? { type: 1, content: m.stream_data as string }
+      : toPayloadFromAny(m?.payload)
   // 检查消息的 error 字段（与 payload 平级）
   const errorMessage = m?.error ? String(m.error) : undefined
   return {
@@ -313,12 +326,71 @@ export const useChatStore = create<ChatState>((set, get) => ({
         })
       })
       // custom stream events (de-duped)
+      // Supports both legacy event format and new Stream API v2 format
       if (offCustom) { try { offCustom() } catch {} ; offCustom = null }
       offCustom = IMService.onCustom((ev: unknown) => {
         try {
           if (!ev) return
-          const customEvent = ev as { type?: string; id?: unknown; data?: unknown }
+          const customEvent = ev as { type?: string; id?: unknown; data?: unknown; dataJson?: any }
 
+          // --- New Stream API v2 event format ---
+          const eventData = (() => {
+            if (customEvent.dataJson && typeof customEvent.dataJson === 'object') return customEvent.dataJson as Record<string, any>
+            if (typeof customEvent.data === 'string') {
+              try { return JSON.parse(customEvent.data) as Record<string, any> } catch { return null }
+            }
+            if (customEvent.data && typeof customEvent.data === 'object') return customEvent.data as Record<string, any>
+            return null
+          })()
+
+          const newEventType = eventData?.event_type as string | undefined
+          const clientMsgNo = eventData?.client_msg_no ? String(eventData.client_msg_no) : (customEvent?.id ? String(customEvent.id) : '')
+
+          if (newEventType === 'stream.delta') {
+            if (!clientMsgNo) return
+            const payload = eventData?.payload
+            if (payload?.kind === 'text' && payload?.delta) {
+              get().appendStreamData(clientMsgNo, payload.delta)
+            } else if (payload?.kind === 'json_render') {
+              const patches = normalizeJSONRenderPatches(payload?.patches)
+              if (patches.length > 0) get().attachJSONRenderPatches(clientMsgNo, patches)
+            }
+            return
+          }
+
+          if (newEventType === 'stream.close') {
+            if (!clientMsgNo) return
+            const errorMessage = eventData?.payload?.end_reason > 0 ? '流异常结束' : undefined
+            console.log('[Chat] Stream closed for message:', clientMsgNo, errorMessage ? `error: ${errorMessage}` : '')
+            get().finalizeStreamMessage(clientMsgNo, errorMessage)
+            try { get().markStreamingEnd() } catch {}
+            return
+          }
+
+          if (newEventType === 'stream.error') {
+            if (!clientMsgNo) return
+            const errorMessage = eventData?.payload?.error || '未知错误'
+            console.log('[Chat] Stream error for message:', clientMsgNo, errorMessage)
+            get().finalizeStreamMessage(clientMsgNo, errorMessage)
+            try { get().markStreamingEnd() } catch {}
+            return
+          }
+
+          if (newEventType === 'stream.cancel') {
+            if (!clientMsgNo) return
+            console.log('[Chat] Stream cancelled for message:', clientMsgNo)
+            get().finalizeStreamMessage(clientMsgNo)
+            try { get().markStreamingEnd() } catch {}
+            return
+          }
+
+          if (newEventType === 'stream.finish') {
+            // Entire stream message completed (all channels done) - confirmation signal
+            console.log('[Chat] Stream finished for message:', clientMsgNo)
+            return
+          }
+
+          // --- Legacy event format (backward compatibility) ---
           // Handle stream start event
           if (customEvent.type === '___TextMessageStart') {
             const id = customEvent?.id ? String(customEvent.id) : ''
@@ -340,7 +412,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             return
           }
 
-          // Handle streaming content chunks
+          // Handle streaming content chunks (legacy)
           if (customEvent.type === '___TextMessageContent') {
             const id = customEvent?.id ? String(customEvent.id) : ''
             if (!id) return
@@ -350,7 +422,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             return
           }
 
-          // Handle json-render patch event
+          // Handle json-render patch event (legacy)
           if (customEvent.type === '___JSONRenderMessage') {
             const id = customEvent?.id ? String(customEvent.id) : ''
             if (!id) return
@@ -369,7 +441,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             return
           }
 
-          // Handle stream end event
+          // Handle stream end event (legacy)
           if (customEvent.type === '___TextMessageEnd') {
             const id = customEvent?.id ? String(customEvent.id) : ''
             if (!id) return

@@ -249,7 +249,9 @@ export class WuKongIMApiService extends BaseApiService {
       start_message_seq: typeof startSeq === 'number' ? startSeq : 0,
       end_message_seq: 0,
       limit,
-      pull_mode: 1 // upward/newer; 0/0 special case returns latest
+      pull_mode: 1, // upward/newer; 0/0 special case returns latest
+      include_event_meta: 1,
+      event_summary_mode: 'full',
     };
     return this.syncChannelMessages(request);
   }
@@ -278,7 +280,9 @@ export class WuKongIMApiService extends BaseApiService {
       start_message_seq: beforeSeq, // inclusive
       end_message_seq: 0,
       limit,
-      pull_mode: 0 // downward/older for infinite scroll
+      pull_mode: 0, // downward/older for infinite scroll
+      include_event_meta: 1,
+      event_summary_mode: 'full',
     };
     return this.syncChannelMessages(request);
   }
@@ -337,8 +341,16 @@ export class WuKongIMUtils {
    * @param wkMessage - WuKongIM message object
    * @returns Extracted message content string
    */
-  static extractMessageContent(wkMessage: WuKongIMMessage | { payload: WuKongIMMessagePayload | string; stream_data?: string | null }): string {
-    // Priority 1: Use stream_data if available and not empty
+  static extractMessageContent(wkMessage: WuKongIMMessage | { payload: WuKongIMMessagePayload | string; stream_data?: string | null; event_meta?: any }): string {
+    // Priority 0: Use event_meta.events main channel snapshot (new Stream API v2)
+    if ('event_meta' in wkMessage && wkMessage.event_meta?.has_events) {
+      const mainEvent = wkMessage.event_meta.events?.find((e: any) => e.event_key === 'main');
+      if (mainEvent?.snapshot?.kind === 'text' && mainEvent.snapshot.text) {
+        return mainEvent.snapshot.text;
+      }
+    }
+
+    // Priority 1: Use stream_data if available and not empty (legacy compatibility)
     if ('stream_data' in wkMessage && wkMessage.stream_data && wkMessage.stream_data.trim() !== '') {
       return wkMessage.stream_data;
     }
@@ -504,11 +516,14 @@ export class WuKongIMUtils {
     }
 
     // Determine if this is a streaming message that's still in progress
-    // A message is streaming if:
-    // 1. It has stream_data (indicating it's a stream message)
-    // 2. end field is not 1 (end=1 means streaming finished)
-    const hasStreamData = !!(wkMessage.stream_data && wkMessage.stream_data.trim() !== '');
-    const isStreamingInProgress = hasStreamData && wkMessage.end !== 1;
+    // Check new event_meta first, then fall back to legacy stream_data logic
+    let hasStreamData = !!(wkMessage.stream_data && wkMessage.stream_data.trim() !== '');
+    let isStreamingInProgress = hasStreamData && wkMessage.end !== 1;
+
+    if (wkMessage.event_meta?.has_events) {
+      hasStreamData = true;
+      isStreamingInProgress = wkMessage.event_meta.open_event_count > 0;
+    }
 
     // Extract end and end_reason for error state detection
     const streamEnd = wkMessage.end;

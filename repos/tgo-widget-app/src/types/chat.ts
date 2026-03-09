@@ -96,6 +96,29 @@ export type RegularMessagePayload = TextMessagePayload | ImageMessagePayload | F
 // All message payloads including system messages
 export type MessagePayload = RegularMessagePayload | SystemMessagePayload
 
+// Stream event metadata (new Stream API v2)
+export interface StreamEventSnapshot {
+  kind: string;     // "text" | "tool_call" | "json_render"
+  text?: string;    // kind=text: full accumulated text
+  [key: string]: any;
+}
+
+export interface StreamEventMeta {
+  has_events: boolean;
+  completed: boolean;
+  event_version: number;
+  last_msg_event_seq: number;
+  event_count: number;
+  open_event_count: number;
+  events: Array<{
+    event_key: string;
+    status: string;           // "open" | "closed" | "error" | "cancelled"
+    last_msg_event_seq: number;
+    snapshot?: StreamEventSnapshot;
+    end_reason?: number;
+  }>;
+}
+
 export type ChatMessage = {
   id: string
   role: 'agent' | 'user'

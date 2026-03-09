@@ -2,6 +2,7 @@
 // API: POST /v1/visitors/messages/sync (docs/api.json)
 
 import { requireApiKeyOrThrow } from '../utils/url'
+import type { StreamEventMeta } from '../types/chat'
 
 export type PullMode = 0 | 1 // 0=down (older), 1=up (newer)
 
@@ -31,6 +32,7 @@ export type WuKongIMMessage = {
   end_reason?: string | null
   error?: string | null  // AI 处理错误信息（与 payload 平级）
   stream_data?: string | null
+  event_meta?: StreamEventMeta | null  // Stream event metadata (new Stream API v2)
   setting_flags?: {
     receipt?: boolean
     signal?: boolean

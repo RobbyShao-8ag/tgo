@@ -208,6 +208,86 @@ class WuKongIMClient:
         )
 
 
+    async def send_stream_message(
+        self,
+        *,
+        from_uid: str,
+        channel_id: str,
+        channel_type: int,
+        client_msg_no: str,
+        payload: Dict[str, Any],
+    ) -> Optional[WuKongIMMessageSendResponse]:
+        """Send a stream anchor message (creates the initial streaming message).
+
+        This sends a message with is_stream=1 to create a stream anchor that
+        subsequent stream events will be attached to.
+        """
+        return await self.send_message(
+            payload=payload,
+            from_uid=from_uid,
+            channel_id=channel_id,
+            channel_type=channel_type,
+            client_msg_no=client_msg_no,
+            is_stream=1,
+        )
+
+    async def send_stream_event(
+        self,
+        *,
+        channel_id: str,
+        channel_type: int,
+        client_msg_no: str,
+        event_id: str,
+        event_type: str,
+        event_key: str = "main",
+        from_uid: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Send a stream event to the /message/event endpoint.
+
+        Args:
+            channel_id: Channel ID
+            channel_type: Channel type
+            client_msg_no: Client message number (correlates to the stream anchor)
+            event_id: Unique event ID for idempotency
+            event_type: Event type (stream.delta / stream.close / stream.finish / stream.error / stream.cancel)
+            event_key: Event channel key (default "main", also supports "thinking", "tool:*")
+            from_uid: Optional sender UID
+            payload: Optional event payload (e.g. {kind:"text", delta:"..."})
+        """
+        if not self.enabled:
+            logger.debug("WuKongIM integration is disabled; skipping send_stream_event")
+            return {}
+
+        request_data: Dict[str, Any] = {
+            "channel_id": channel_id,
+            "channel_type": channel_type,
+            "client_msg_no": client_msg_no,
+            "event_id": event_id,
+            "event_type": event_type,
+            "event_key": event_key,
+        }
+        if from_uid:
+            request_data["from_uid"] = from_uid
+        if payload is not None:
+            request_data["payload"] = payload
+
+        logger.debug(
+            "Sending WuKongIM stream event",
+            extra={
+                "channel_id": channel_id,
+                "event_type": event_type,
+                "event_key": event_key,
+                "client_msg_no": client_msg_no,
+            },
+        )
+
+        return await self._make_request(
+            method="POST",
+            endpoint="/message/event",
+            json_data=request_data,
+        )
+
     async def send_message(
         self,
         *,
@@ -220,6 +300,7 @@ class WuKongIMClient:
         no_persist: bool = False,
         red_dot: bool = True,
         sync_once: bool = False,
+        is_stream: int = 0,
     ) -> Optional[WuKongIMMessageSendResponse]:
         """Send a message through WuKongIM (/message/send API).
 
@@ -236,6 +317,7 @@ class WuKongIMClient:
             no_persist: Whether message should not be persisted (default False = persist)
             red_dot: Whether to show red dot notification (default True = show)
             sync_once: Whether message should be synced only once (default False = normal sync)
+            is_stream: Whether this is a stream anchor message (0=normal, 1=stream anchor)
 
         Returns:
             Response with message_id, message_seq, client_msg_no
@@ -262,6 +344,8 @@ class WuKongIMClient:
             request_data["client_msg_no"] = client_msg_no
         if subscribers is not None:
             request_data["subscribers"] = subscribers
+        if is_stream:
+            request_data["is_stream"] = is_stream
 
         # Build header if any non-default values
         header: Dict[str, int] = {}
@@ -1655,6 +1739,8 @@ class WuKongIMClient:
         end_message_seq: int = 0,
         limit: int = 100,
         pull_mode: int = 1,
+        include_event_meta: int = 0,
+        event_summary_mode: str = "basic",
     ) -> WuKongIMChannelMessageSyncResponse:
         """
         Synchronize messages from a specific channel.
@@ -1667,6 +1753,8 @@ class WuKongIMClient:
             end_message_seq: End message sequence number (exclusive)
             limit: Message count limit
             pull_mode: Pull mode (0=down, 1=up)
+            include_event_meta: Whether to include event_meta in response (0=no, 1=yes)
+            event_summary_mode: Event summary mode ("basic" or "full")
 
         Returns:
             WuKongIMChannelMessageSyncResponse with decoded payloads
@@ -1690,6 +1778,9 @@ class WuKongIMClient:
             "pull_mode": pull_mode,
             "stream_v2": 1,
         }
+        if include_event_meta:
+            request_data["include_event_meta"] = include_event_meta
+            request_data["event_summary_mode"] = event_summary_mode
 
         logger.info(
             f"Syncing channel messages for user {login_uid}",

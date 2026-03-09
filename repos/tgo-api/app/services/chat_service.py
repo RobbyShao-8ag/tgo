@@ -152,20 +152,29 @@ async def forward_ai_event_to_wukongim(
     client_msg_no: str,
     from_uid: str,
 ) -> Optional[str]:
-    """Forward AI event to WuKongIM."""
+    """Forward AI event to WuKongIM using the new Stream API.
+
+    Flow:
+      team_run_started  → send_stream_message (anchor with is_stream=1)
+      team_run_content  → send_stream_event (stream.delta)
+      team_run_completed → send_stream_event (stream.close + stream.finish)
+      team_run_failed   → send_stream_event (stream.error)
+      json_render_update → send_stream_event (stream.delta with kind=json_render)
+    """
     try:
         data = event_data.get("data") or {}
-        logger.info(f"Forwarding AI event1 {event_type} to WuKongIM: {data}")
+        logger.info(f"Forwarding AI event {event_type} to WuKongIM: {data}")
+
         if event_type in {"team_run_started"}:
-            await wukongim_client.send_event(
+            # Send stream anchor message
+            await wukongim_client.send_stream_message(
+                from_uid=from_uid,
                 channel_id=channel_id,
                 channel_type=channel_type,
-                event_type="___TextMessageStart",
-                data='{"type":100}',
                 client_msg_no=client_msg_no,
-                from_uid=from_uid,
-                force=True,
+                payload={"type": 100, "content": "AI 正在思考中..."},
             )
+
         elif event_type in {"team_run_content"}:
             # Robust extraction of content from data
             chunk_text = data.get("content") or data.get("text")
@@ -173,7 +182,7 @@ async def forward_ai_event_to_wukongim(
                 inner_data = data.get("data", {})
                 if isinstance(inner_data, dict):
                     chunk_text = inner_data.get("content") or inner_data.get("text")
-            
+
             if chunk_text is not None:
                 chunk_str = str(chunk_text)
                 # Safety: if spec fence leaked into text path, drop fence and everything after.
@@ -182,48 +191,68 @@ async def forward_ai_event_to_wukongim(
                     chunk_str = chunk_str.split(_spec_fence_open, 1)[0]
                 if not chunk_str:
                     return None
-                await wukongim_client.send_event(
+                await wukongim_client.send_stream_event(
                     channel_id=channel_id,
                     channel_type=channel_type,
-                    event_type="___TextMessageContent",
-                    data=chunk_str,
                     client_msg_no=client_msg_no,
+                    event_id=uuid4().hex,
+                    event_type="stream.delta",
+                    event_key="main",
                     from_uid=from_uid,
+                    payload={"kind": "text", "delta": chunk_str},
                 )
                 return chunk_str
+
         elif event_type in {"team_run_completed"}:
-            await wukongim_client.send_event(
+            # Close the stream channel, then finish the entire message
+            await wukongim_client.send_stream_event(
                 channel_id=channel_id,
                 channel_type=channel_type,
-                data="",
-                event_type="___TextMessageEnd",
                 client_msg_no=client_msg_no,
+                event_id=uuid4().hex,
+                event_type="stream.close",
+                event_key="main",
                 from_uid=from_uid,
             )
+            await wukongim_client.send_stream_event(
+                channel_id=channel_id,
+                channel_type=channel_type,
+                client_msg_no=client_msg_no,
+                event_id=uuid4().hex,
+                event_type="stream.finish",
+                event_key="main",
+                from_uid=from_uid,
+            )
+
         elif event_type == "team_run_failed":
             error_message = data.get("error") or "AI processing failed"
-            await wukongim_client.send_event(
+            await wukongim_client.send_stream_event(
                 channel_id=channel_id,
                 channel_type=channel_type,
-                event_type="___TextMessageEnd",
-                data=str(error_message),
                 client_msg_no=client_msg_no,
+                event_id=uuid4().hex,
+                event_type="stream.error",
+                event_key="main",
                 from_uid=from_uid,
+                payload={"error": str(error_message)},
             )
+
         elif event_type == "json_render_update":
-            import json as _json
-            json_render_payload = _json.dumps({
-                "patches": data.get("patches", []),
-                "text_content": data.get("text_content"),
-            }, ensure_ascii=False)
-            await wukongim_client.send_event(
+            await wukongim_client.send_stream_event(
                 channel_id=channel_id,
                 channel_type=channel_type,
-                event_type="___JSONRenderMessage",
-                data=json_render_payload,
                 client_msg_no=client_msg_no,
+                event_id=uuid4().hex,
+                event_type="stream.delta",
+                event_key="main",
                 from_uid=from_uid,
+                payload={
+                    "kind": "json_render",
+                    "patches": data.get("patches", []),
+                    "text_content": data.get("text_content"),
+                },
             )
+
     except Exception as e:
         logger.error(f"Failed to forward AI event {event_type} to WuKongIM: {e}")
     return None

@@ -91,6 +91,7 @@ export type ConnectionStatusHandler = (status: ConnectionStatus) => void;
 export type ErrorHandler = (error: any) => void;
 export type StreamMessageHandler = (clientMsgNo: string, content: string) => void;
 export type StreamEndHandler = (clientMsgNo: string, error?: string) => void;
+export type StreamFinishHandler = (clientMsgNo: string) => void;
 export type JSONRenderMessageHandler = (clientMsgNo: string, payload: { patches: Record<string, unknown>[] }) => void;
 export type VisitorPresenceEvent = { visitorId?: string; channelId: string; channelType: number; isOnline: boolean; timestamp?: string | null; eventType: string; raw?: any };
 export type VisitorPresenceHandler = (presence: VisitorPresenceEvent) => void;
@@ -121,6 +122,7 @@ export class WuKongIMWebSocketService {
 
   private streamMessageHandlers: StreamMessageHandler[] = [];
   private streamEndHandlers: StreamEndHandler[] = [];
+  private streamFinishHandlers: StreamFinishHandler[] = [];
   private jsonRenderMessageHandlers: JSONRenderMessageHandler[] = [];
   private visitorPresenceHandlers: VisitorPresenceHandler[] = [];
 
@@ -615,6 +617,7 @@ export class WuKongIMWebSocketService {
     this.im.on(WKIMEvent.Error, this.eventHandlers.error);
 
     // Custom event - AI stream message handling and visitor presence
+    // Supports both legacy event format (event.type/event.data) and new Stream API v2 format (event_type/payload)
     this.eventHandlers.customEvent = (event: any) => {
       console.log('🔌 WuKongIM CustomEvent received:', {
         id: event?.id,
@@ -624,8 +627,54 @@ export class WuKongIMWebSocketService {
       });
 
       try {
+        // --- New Stream API v2 event format ---
+        // Check if this is a new-format event by looking for event_type in the event data
+        const eventData = (() => {
+          if (event?.dataJson && typeof event.dataJson === 'object') return event.dataJson;
+          if (typeof event?.data === 'string') {
+            try { return JSON.parse(event.data); } catch { return null; }
+          }
+          if (event?.data && typeof event.data === 'object') return event.data;
+          return null;
+        })();
+
+        const newEventType = eventData?.event_type;
+        const clientMsgNo = eventData?.client_msg_no || event?.id;
+
+        if (newEventType === WS_EVENT_TYPE.STREAM_DELTA) {
+          const payload = eventData.payload;
+          if (payload?.kind === 'text' && payload?.delta) {
+            this.notifyStreamMessageHandlers(clientMsgNo, payload.delta);
+          } else if (payload?.kind === 'json_render') {
+            this.notifyJSONRenderMessageHandlers(clientMsgNo, payload);
+          }
+          return;
+        }
+
+        if (newEventType === WS_EVENT_TYPE.STREAM_CLOSE) {
+          const errorMessage = eventData.payload?.end_reason > 0 ? '流异常结束' : undefined;
+          this.notifyStreamEndHandlers(clientMsgNo, errorMessage);
+          return;
+        }
+
+        if (newEventType === WS_EVENT_TYPE.STREAM_ERROR) {
+          this.notifyStreamEndHandlers(clientMsgNo, eventData.payload?.error || '未知错误');
+          return;
+        }
+
+        if (newEventType === WS_EVENT_TYPE.STREAM_CANCEL) {
+          this.notifyStreamEndHandlers(clientMsgNo);
+          return;
+        }
+
+        if (newEventType === WS_EVENT_TYPE.STREAM_FINISH) {
+          this.notifyStreamFinishHandlers(clientMsgNo);
+          return;
+        }
+
+        // --- Legacy event format (backward compatibility) ---
         if (event.type === '___TextMessageContent') {
-          // AI streaming content
+          // AI streaming content (legacy)
           this.notifyStreamMessageHandlers(event.id, event.data);
         } else if (event.type === 'visitor.online' || event.type === 'visitor.offline') {
           // Visitor presence updates
@@ -674,7 +723,7 @@ export class WuKongIMWebSocketService {
           console.log('🔌 Queue updated event received:', payload);
           this.notifyQueueUpdatedHandlers({ raw: payload });
         } else if (event.type === '___JSONRenderMessage') {
-          // json-render patch message from the AI agent
+          // json-render patch message from the AI agent (legacy)
           try {
             const jsonRenderPayload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
             this.notifyJSONRenderMessageHandlers(event.id, jsonRenderPayload);
@@ -682,10 +731,9 @@ export class WuKongIMWebSocketService {
             console.warn('🔌 Failed to parse json-render message data:', e);
           }
         } else if (event.type === WS_EVENT_TYPE.TEXT_MESSAGE_END) {
-          // AI streaming content ended
-          // If event.data has a value, it's treated as an error message
-          const errorMessage = event.data && typeof event.data === 'string' && event.data.trim() !== '' 
-            ? event.data.trim() 
+          // AI streaming content ended (legacy)
+          const errorMessage = event.data && typeof event.data === 'string' && event.data.trim() !== ''
+            ? event.data.trim()
             : undefined;
           console.log('🔌 Stream message ended:', { clientMsgNo: event.id, error: errorMessage });
           this.notifyStreamEndHandlers(event.id, errorMessage);
@@ -878,6 +926,21 @@ export class WuKongIMWebSocketService {
     }
   }
 
+  private notifyStreamFinishHandlers(clientMsgNo: string): void {
+    console.log('🔌 Notifying stream finish handlers:', {
+      clientMsgNo,
+      handlerCount: this.streamFinishHandlers.length
+    });
+
+    this.streamFinishHandlers.forEach(handler => {
+      try {
+        handler(clientMsgNo);
+      } catch (err) {
+        console.error('Stream finish handler error:', err);
+      }
+    });
+  }
+
   /**
    * Notify all json-render message handlers.
    */
@@ -1009,6 +1072,21 @@ export class WuKongIMWebSocketService {
       if (index > -1) {
         this.streamEndHandlers.splice(index, 1);
         console.log('🔌 Stream end handler unregistered, remaining:', this.streamEndHandlers.length);
+      }
+    };
+  }
+
+  /**
+   * Subscribe to stream finish events (entire stream message completed)
+   */
+  onStreamFinish(handler: StreamFinishHandler): () => void {
+    this.streamFinishHandlers.push(handler);
+    console.log('🔌 Stream finish handler registered, total:', this.streamFinishHandlers.length);
+    return () => {
+      const index = this.streamFinishHandlers.indexOf(handler);
+      if (index > -1) {
+        this.streamFinishHandlers.splice(index, 1);
+        console.log('🔌 Stream finish handler unregistered, remaining:', this.streamFinishHandlers.length);
       }
     };
   }

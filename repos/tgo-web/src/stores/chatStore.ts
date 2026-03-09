@@ -91,6 +91,7 @@ interface ChatState {
   getChannelMessages: (channelId: string, channelType: number) => WuKongIMMessage[];
   appendStreamMessageContent: (clientMsgNo: string, content: string) => void;
   markStreamMessageEnd: (clientMsgNo: string, error?: string) => void;
+  markStreamMessageFinish: (clientMsgNo: string) => void;
   cancelStreamingMessage: (clientMsgNo?: string) => Promise<void>;
   attachJSONRenderPatches: (clientMsgNo: string, patches: Record<string, unknown>[]) => void;
   setTargetMessageLocation: (loc: { channelId: string; channelType: number; messageSeq: number } | null) => void;
@@ -340,6 +341,14 @@ export const useChatStore = create<ChatState>()(
               isStreamingInProgress: msgState.isStreamingInProgress,
               streamingClientMsgNo: msgState.streamingClientMsgNo,
             }, false, 'markStreamMessageEnd');
+          },
+          markStreamMessageFinish: (clientMsgNo) => {
+            useMessageStore.getState().markStreamMessageFinish(clientMsgNo);
+            const msgState = useMessageStore.getState();
+            set({
+              messages: msgState.messages,
+              historicalMessages: msgState.historicalMessages,
+            }, false, 'markStreamMessageFinish');
           },
           cancelStreamingMessage: async (clientMsgNo) => {
             await useMessageStore.getState().cancelStreamingMessage(clientMsgNo);

@@ -1334,6 +1334,28 @@ export interface WuKongIMMessagePayload {
   type: number; // Message type
 }
 
+export interface StreamEventSnapshot {
+  kind: string;     // "text" | "tool_call" | "json_render"
+  text?: string;    // kind=text: full accumulated text
+  [key: string]: any;
+}
+
+export interface StreamEventMeta {
+  has_events: boolean;
+  completed: boolean;
+  event_version: number;
+  last_msg_event_seq: number;
+  event_count: number;
+  open_event_count: number;
+  events: Array<{
+    event_key: string;
+    status: string;           // "open" | "closed" | "error" | "cancelled"
+    last_msg_event_seq: number;
+    snapshot?: StreamEventSnapshot;
+    end_reason?: number;
+  }>;
+}
+
 export interface WuKongIMMessage {
   header: WuKongIMMessageHeader;
   setting: number; // Message settings (uint8)
@@ -1350,6 +1372,7 @@ export interface WuKongIMMessage {
   end_reason?: number | null; // Stream end reason code
   stream_data?: string | null; // Decoded stream data (base64 decoded) - prioritized over payload content
   error?: string | null; // Error message from stream end event or API response
+  event_meta?: StreamEventMeta | null; // Stream event metadata (new Stream API v2)
 }
 
 export interface WuKongIMConversation {
@@ -1399,6 +1422,8 @@ export interface WuKongIMMessageSyncRequest {
   end_message_seq?: number; // End message sequence (exclusive). 0 means unbounded
   limit?: number; // Maximum number of messages to return (default: 50)
   pull_mode?: 0 | 1; // 0=downward (older), 1=upward (newer)
+  include_event_meta?: number; // Whether to include event_meta in response (0=no, 1=yes)
+  event_summary_mode?: string; // Event summary mode ("basic" or "full")
 }
 
 export interface WuKongIMMessageSyncResponse {

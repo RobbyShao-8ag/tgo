@@ -44,7 +44,7 @@ services:
 
   # WuKongIM service
   wukongim:
-    image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2.2.3-dev
+    image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2.2.4-dev
     container_name: tgo-dev-wukongim
     environment:
       # WuKongIM cluster configuration

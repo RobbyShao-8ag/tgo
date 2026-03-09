@@ -119,14 +119,27 @@ export { PlatformType } from '@/types';
  * WebSocket event type constants for real-time updates
  */
 export const WS_EVENT_TYPE = {
+  // Non-stream event types
   /** Visitor profile updated (name, tags, etc.) */
   VISITOR_PROFILE_UPDATED: 'visitor.profile.updated',
   /** Visitor presence changed (online/offline) */
   VISITOR_PRESENCE: 'visitor.presence',
   /** Waiting queue updated (new visitor, assigned, etc.) */
   QUEUE_UPDATED: 'queue.updated',
-  /** AI streaming text message end */
+  // Legacy stream types (kept for backward compatibility)
+  /** AI streaming text message end (legacy) */
   TEXT_MESSAGE_END: '___TextMessageEnd',
+  // New stream event types (WuKongIM Stream API v2)
+  /** Stream delta content (text chunk or json_render patch) */
+  STREAM_DELTA: 'stream.delta',
+  /** Stream channel closed */
+  STREAM_CLOSE: 'stream.close',
+  /** Stream error */
+  STREAM_ERROR: 'stream.error',
+  /** Stream cancelled */
+  STREAM_CANCEL: 'stream.cancel',
+  /** Entire stream message finished (all channels done) */
+  STREAM_FINISH: 'stream.finish',
 } as const;
 
 export type WsEventType = typeof WS_EVENT_TYPE[keyof typeof WS_EVENT_TYPE];

@@ -950,6 +950,8 @@ async def sync_channel_messages(
             end_message_seq=request.end_message_seq,
             limit=request.limit,
             pull_mode=request.pull_mode,
+            include_event_meta=1,
+            event_summary_mode="full",
         )
 
         message_count = len(result.messages)

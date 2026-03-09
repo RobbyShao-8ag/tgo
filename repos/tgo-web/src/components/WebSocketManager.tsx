@@ -27,6 +27,7 @@ export const WebSocketManager: React.FC = () => {
   const handleRealtimeMessage = useChatStore(state => state.handleRealtimeMessage);
   const appendStreamMessageContent = useChatStore(state => state.appendStreamMessageContent);
   const markStreamMessageEnd = useChatStore(state => state.markStreamMessageEnd);
+  const markStreamMessageFinish = useChatStore(state => state.markStreamMessageFinish);
   const attachJSONRenderPatches = useChatStore(state => state.attachJSONRenderPatches);
   const activeChat = useChatStore(state => state.activeChat);
   
@@ -165,6 +166,18 @@ export const WebSocketManager: React.FC = () => {
   }, [markStreamMessageEnd]);
 
   /**
+   * Handle AI stream finish events (entire stream message completed)
+   */
+  const handleStreamFinish = React.useCallback((clientMsgNo: string) => {
+    try {
+      markStreamMessageFinish(clientMsgNo);
+      console.log('🤖 WebSocket Manager: Stream message finished (all channels done)');
+    } catch (err) {
+      console.error('🤖 WebSocket Manager: Error marking stream message finish:', err);
+    }
+  }, [markStreamMessageFinish]);
+
+  /**
    * Handle json-render patch messages from the AI agent.
    */
   const handleJSONRenderMessage = React.useCallback((clientMsgNo: string, payload: { patches: Record<string, unknown>[] }) => {
@@ -271,6 +284,7 @@ export const WebSocketManager: React.FC = () => {
     const unsubscribeError = wukongimWebSocketService.onError(handleError);
     const unsubscribeStreamMessage = wukongimWebSocketService.onStreamMessage(handleStreamMessage);
     const unsubscribeStreamEnd = wukongimWebSocketService.onStreamEnd(handleStreamEnd);
+    const unsubscribeStreamFinish = wukongimWebSocketService.onStreamFinish(handleStreamFinish);
     const unsubscribeJSONRenderMessage = wukongimWebSocketService.onJSONRenderMessage(handleJSONRenderMessage);
     const unsubscribePresence = wukongimWebSocketService.onVisitorPresence(handlePresenceEvent);
     const unsubscribeProfileUpdated = wukongimWebSocketService.onVisitorProfileUpdated(handleVisitorProfileUpdated);
@@ -283,11 +297,12 @@ export const WebSocketManager: React.FC = () => {
       unsubscribeError();
       unsubscribeStreamMessage();
       unsubscribeStreamEnd();
+      unsubscribeStreamFinish();
       unsubscribeJSONRenderMessage();
       unsubscribePresence();
       unsubscribeProfileUpdated();
     };
-  }, [handleMessage, handleConnectionStatus, handleError, handleStreamMessage, handleStreamEnd, handleJSONRenderMessage, handlePresenceEvent, handleVisitorProfileUpdated]);
+  }, [handleMessage, handleConnectionStatus, handleError, handleStreamMessage, handleStreamEnd, handleStreamFinish, handleJSONRenderMessage, handlePresenceEvent, handleVisitorProfileUpdated]);
 
   /**
    * Auto-connect when token and user are available

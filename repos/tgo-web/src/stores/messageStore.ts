@@ -79,6 +79,7 @@ interface MessageState {
   // Actions - 流式消息
   appendStreamMessageContent: (clientMsgNo: string, content: string) => void;
   markStreamMessageEnd: (clientMsgNo: string, error?: string) => void;
+  markStreamMessageFinish: (clientMsgNo: string) => void;
   cancelStreamingMessage: (clientMsgNo?: string) => Promise<void>;
   setStreamingState: (inProgress: boolean, clientMsgNo: string | null) => void;
   registerStreamingChannel: (clientMsgNo: string, channelId: string, channelType: number) => void;
@@ -614,6 +615,47 @@ export const useMessageStore = create<MessageState>()(
           false,
           'markStreamMessageEnd:notFound'
         );
+      },
+
+      markStreamMessageFinish: (clientMsgNo: string) => {
+        // stream.finish indicates the entire stream message is completed (all channels done).
+        // In single-channel mode this is mostly a confirmation after stream.close.
+        // We mark the message metadata as completed.
+        const state = get();
+
+        // Try realtime messages (Message[] with clientMsgNo and metadata)
+        const realtimeIdx = state.messages.findIndex(m => m.clientMsgNo === clientMsgNo);
+        if (realtimeIdx >= 0) {
+          const updated = [...state.messages];
+          updated[realtimeIdx] = {
+            ...updated[realtimeIdx],
+            metadata: {
+              ...updated[realtimeIdx].metadata,
+              is_streaming: false,
+              stream_completed: true,
+            },
+          };
+          set({ messages: updated }, false, 'markStreamMessageFinish:realtime');
+          return;
+        }
+
+        // Try historical messages (WuKongIMMessage[] with client_msg_no)
+        for (const [key, msgs] of Object.entries(state.historicalMessages)) {
+          const idx = msgs.findIndex(m => m.client_msg_no === clientMsgNo);
+          if (idx >= 0) {
+            const updated = [...msgs];
+            updated[idx] = {
+              ...updated[idx],
+              end: 1,
+            };
+            set(
+              { historicalMessages: { ...state.historicalMessages, [key]: updated } },
+              false,
+              'markStreamMessageFinish:historical'
+            );
+            return;
+          }
+        }
       },
 
       cancelStreamingMessage: async (clientMsgNo) => {

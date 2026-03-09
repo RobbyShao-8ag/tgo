@@ -1414,6 +1414,8 @@ async def sync_visitor_channel_messages(
             end_message_seq=end_seq,
             limit=limit,
             pull_mode=pull_mode,
+            include_event_meta=1,
+            event_summary_mode="full",
         )
         msg_count = len(result.messages)
         logger.info(
