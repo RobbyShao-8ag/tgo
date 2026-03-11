@@ -18,11 +18,6 @@ TGO 是一個開源的 AI 智能體客服平台，致力於幫助企業「組建
 
 ## 🚀 快速開始 (Quick Start)
 
-### 機器配置要求
-- **CPU**: >= 2 Core
-- **RAM**: >= 4 GiB
-- **OS**: macOS / Linux / WSL2
-
 ### 一鍵部署
 
 在服務器上運行以下命令即可完成檢查、克隆並啟動服務：
@@ -116,3 +111,8 @@ REF=latest curl -fsSL https://raw.githubusercontent.com/tgoai/tgo/main/bootstrap
 | **首頁** <br> <img src="resources/screenshot/zh/home_dark.png" width="100%"> | **智能體編排** <br> <img src="resources/screenshot/zh/agent_dark.png" width="100%"> |
 | **知識庫管理** <br> <img src="resources/screenshot/zh/knowledge_dark.png" width="100%"> | **問答調試** <br> <img src="resources/screenshot/zh/knowledge_qa_dark.png" width="100%"> |
 | **MCP 工具** <br> <img src="resources/screenshot/zh/mcp_dark.png" width="100%"> | **平台管理** <br> <img src="resources/screenshot/zh/platform_dark.png" width="100%"> |
+
+## 機器配置要求
+- **CPU**: >= 4 Core
+- **RAM**: >= 8 GiB
+- **OS**: macOS / Linux / WSL2

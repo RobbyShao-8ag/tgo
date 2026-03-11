@@ -18,11 +18,6 @@ TGOは、企業が「顧客サービスのためのAIエージェントチーム
 
 ## 🚀 クイックスタート (Quick Start)
 
-### システム要件
-- **CPU**: >= 2 Core
-- **RAM**: >= 4 GiB
-- **OS**: macOS / Linux / WSL2
-
 ### ワンクリックデプロイ
 
 以下のコマンドをサーバーで実行して、要件を確認し、リポジトリをクローンして、サービスを開始します。
@@ -111,3 +106,8 @@ REF=latest curl -fsSL https://raw.githubusercontent.com/tgoai/tgo/main/bootstrap
 | **ダッシュボード** <br> <img src="resources/screenshot/en/home_dark.png" width="100%"> | **エージェント編成** <br> <img src="resources/screenshot/en/agent_dark.png" width="100%"> |
 | **ナレッジベース** <br> <img src="resources/screenshot/en/knowledge_dark.png" width="100%"> | **Q&Aデバッグ** <br> <img src="resources/screenshot/en/knowledge_qa_dark.png" width="100%"> |
 | **MCPツール** <br> <img src="resources/screenshot/en/mcp_dark.png" width="100%"> | **プラットフォーム管理** <br> <img src="resources/screenshot/en/platform_dark.png" width="100%"> |
+
+## システム要件
+- **CPU**: >= 4 Core
+- **RAM**: >= 8 GiB
+- **OS**: macOS / Linux / WSL2

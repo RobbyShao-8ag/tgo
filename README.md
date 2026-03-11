@@ -18,11 +18,6 @@ TGO is an open-source AI agent customer service platform dedicated to helping en
 
 ## 🚀 Quick Start
 
-### System Requirements
-- **CPU**: >= 2 Core
-- **RAM**: >= 4 GiB
-- **OS**: macOS / Linux / WSL2
-
 ### One-Click Deployment
 
 Run the following command on your server to check requirements, clone the repository, and start the services:
@@ -116,3 +111,8 @@ For more details, please visit the [Documentation](https://tgo.ai).
 | **Dashboard** <br> <img src="resources/screenshot/en/home_dark.png" width="100%"> | **Agent Orchestration** <br> <img src="resources/screenshot/en/agent_dark.png" width="100%"> |
 | **Knowledge Base** <br> <img src="resources/screenshot/en/knowledge_dark.png" width="100%"> | **Q&A Debugging** <br> <img src="resources/screenshot/en/knowledge_qa_dark.png" width="100%"> |
 | **MCP Tools** <br> <img src="resources/screenshot/en/mcp_dark.png" width="100%"> | **Platform Admin** <br> <img src="resources/screenshot/en/platform_dark.png" width="100%"> |
+
+## System Requirements
+- **CPU**: >= 4 Core
+- **RAM**: >= 8 GiB
+- **OS**: macOS / Linux / WSL2
