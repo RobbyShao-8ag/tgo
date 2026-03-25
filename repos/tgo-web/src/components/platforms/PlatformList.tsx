@@ -206,14 +206,22 @@ const PlatformList: React.FC = () => {
           </div>
         )}
 
-        {!isLoading && !loadError && platforms.map((platform: Platform) => (
-          <PlatformListItem
-            key={platform.id}
-            platform={platform}
-          />
-        ))}
+        {!isLoading && !loadError && platforms
+          .filter((platform: Platform) => {
+            const allowedTypes = ['website', 'wechat', 'webchat', 'custom', 'wecom', 'wecom_bot'];
+            return allowedTypes.includes(platform.type);
+          })
+          .map((platform: Platform) => (
+            <PlatformListItem
+              key={platform.id}
+              platform={platform}
+            />
+          ))}
 
-        {!isLoading && !loadError && platforms.length === 0 && (
+        {!isLoading && !loadError && platforms.filter((platform: Platform) => {
+          const allowedTypes = ['website', 'wechat', 'webchat', 'custom', 'wecom', 'wecom_bot'];
+          return allowedTypes.includes(platform.type);
+        }).length === 0 && (
           <div className="text-center text-gray-500 dark:text-gray-400 py-8">
             <Inbox className="mx-auto mb-4 w-12 h-12 text-gray-300 dark:text-gray-600" />
             <p className="text-sm">{t('platforms.list.emptyTitle', '暂无平台')}</p>
