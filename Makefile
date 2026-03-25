@@ -108,10 +108,17 @@ help:
 	@echo "$(GREEN)Combined:$(RESET)"
 	@echo "  make dev-all          Start all services in background"
 	@echo "  make stop-all         Stop all background services"
+	@echo "  make up-full          One-command full startup (incl. workers, with health check)"
+	@echo "  make down-full        One-command full shutdown (clean stop)"
 	@echo ""
 	@echo "$(GREEN)Celery Workers:$(RESET)"
 	@echo "  make dev-rag-worker   Start RAG Celery worker"
 	@echo "  make dev-wf-worker    Start Workflow Celery worker"
+	@echo "  make workers-start    Start all workers (with check)"
+	@echo "  make workers-stop     Stop all workers"
+	@echo "  make workers-restart  Restart all workers"
+	@echo "  make workers-status   Check worker status"
+	@echo "  make workers-logs     View worker logs"
 	@echo ""
 	@echo "$(GREEN)Utilities:$(RESET)"
 	@echo "  make check-env        Check if .env.dev exists"
@@ -155,6 +162,41 @@ infra-logs:
 
 infra-ps:
 	@docker compose -f $(COMPOSE_DEV) ps
+
+.PHONY: wait-for-infra
+wait-for-infra:
+	@echo "$(CYAN)Waiting for infrastructure to be ready...$(RESET)"
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if docker exec tgo-dev-redis redis-cli ping 2>/dev/null | grep -q "PONG"; then \
+			echo "$(GREEN)  ✓ Redis is ready$(RESET)"; \
+			break; \
+		fi; \
+		if [ $$i -eq 10 ]; then \
+			echo "$(RED)  ✗ Redis failed to start$(RESET)"; \
+			exit 1; \
+		fi; \
+		echo "  Waiting for Redis... ($$i/10)"; \
+		sleep 1; \
+	done
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if docker exec tgo-dev-postgres pg_isready -U tgo 2>/dev/null | grep -q "accepting connections"; then \
+			echo "$(GREEN)  ✓ PostgreSQL is ready$(RESET)"; \
+			break; \
+		fi; \
+		if [ $$i -eq 10 ]; then \
+			echo "$(RED)  ✗ PostgreSQL failed to start$(RESET)"; \
+			exit 1; \
+		fi; \
+		echo "  Waiting for PostgreSQL... ($$i/10)"; \
+		sleep 1; \
+	done
+
+.PHONY: check-services-health
+check-services-health:
+	@echo "  Checking API... $$(if curl -s http://localhost:$(API_PORT)/health > /dev/null 2>&1; then echo '$(GREEN)✓$(RESET)'; else echo '$(YELLOW)✗$(RESET)'; fi)"
+	@echo "  Checking AI... $$(if curl -s http://localhost:$(AI_PORT)/health > /dev/null 2>&1; then echo '$(GREEN)✓$(RESET)'; else echo '$(YELLOW)✗$(RESET)'; fi)"
+	@echo "  Checking RAG... $$(if curl -s http://localhost:$(RAG_PORT)/health > /dev/null 2>&1; then echo '$(GREEN)✓$(RESET)'; else echo '$(YELLOW)✗$(RESET)'; fi)"
+	@echo "  Checking Workers... $$(if pgrep -f 'celery.*worker' > /dev/null; then echo '$(GREEN)✓$(RESET)'; else echo '$(YELLOW)✗$(RESET)'; fi)"
 
 # ==========================================================
 # Dependency Installation
@@ -392,7 +434,7 @@ dev-frontend: check-env
 
 dev-all: dev-backend dev-frontend
 
-.PHONY: stop-all
+.PHONY: stop-all up-full down-full
 stop-all:
 	@echo "$(YELLOW)Stopping all local development services...$(RESET)"
 	@pkill -f "uvicorn.*app.main:app" || true
@@ -400,6 +442,83 @@ stop-all:
 	@pkill -f "vite" || true
 	@pkill -f "celery" || true
 	@echo "$(GREEN)All services stopped.$(RESET)"
+
+up-full: check-env
+	@echo "$(CYAN)Starting full local stack (infra + all services + workers)...$(RESET)"
+	@export NVM_DIR="$$HOME/.nvm"; \
+	if [ -s "$$NVM_DIR/nvm.sh" ]; then \
+		. "$$NVM_DIR/nvm.sh"; \
+		nvm use 20 >/dev/null; \
+	else \
+		echo "$(YELLOW)Warning: nvm not found, using system Node$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(CYAN)[1/6] Starting infrastructure...$(RESET)"
+	@$(MAKE) infra-up
+	@$(MAKE) wait-for-infra
+	@echo ""
+	@echo "$(CYAN)[2/6] Running database migrations...$(RESET)"
+	@$(MAKE) migrate
+	@echo ""
+	@echo "$(CYAN)[3/6] Starting backend services...$(RESET)"
+	@$(MAKE) dev-backend
+	@echo "$(GREEN)  ✓ Backend services started$(RESET)"
+	@echo ""
+	@echo "$(CYAN)[4/6] Starting frontend services...$(RESET)"
+	@$(MAKE) dev-frontend
+	@echo "$(GREEN)  ✓ Frontend services started$(RESET)"
+	@echo ""
+	@echo "$(CYAN)[5/6] Starting Celery workers...$(RESET)"
+	@sleep 2
+	@$(MAKE) start-rag-worker-if-needed
+	@$(MAKE) start-wf-worker-if-needed
+	@echo ""
+	@echo "$(CYAN)[6/6] Checking service health...$(RESET)"
+	@sleep 2
+	@$(MAKE) check-services-health
+	@echo ""
+	@echo "$(GREEN)=========================================$(RESET)"
+	@echo "$(GREEN)Full stack is up and running!$(RESET)"
+	@echo "$(GREEN)=========================================$(RESET)"
+	@echo ""
+	@echo "$(CYAN)Access URLs:$(RESET)"
+	@echo "  Web:     http://localhost:$(WEB_PORT)"
+	@echo "  Widget:  http://localhost:$(WIDGET_PORT)"
+	@echo "  API:     http://localhost:$(API_PORT)"
+	@echo ""
+	@echo "$(CYAN)Useful commands:$(RESET)"
+	@echo "  make workers-status    Check worker status"
+	@echo "  make workers-logs      View worker logs"
+	@echo "  make down-full         Stop all services"
+	@echo ""
+
+down-full:
+	@echo "$(CYAN)Stopping full local stack...$(RESET)"
+	@echo ""
+	@echo "$(CYAN)[1/4] Stopping Celery workers...$(RESET)"
+	@pkill -f "celery -A src.rag_service.tasks.celery_app worker" 2>/dev/null || true
+	@pkill -f "celery -A celery_app.celery worker" 2>/dev/null || true
+	@sleep 1
+	@echo "$(GREEN)  ✓ Workers stopped$(RESET)"
+	@echo ""
+	@echo "$(CYAN)[2/4] Stopping backend services...$(RESET)"
+	@pkill -f "uvicorn.*app.main:app" 2>/dev/null || true
+	@pkill -f "uvicorn.*src.rag_service.main:app" 2>/dev/null || true
+	@sleep 1
+	@echo "$(GREEN)  ✓ Backend services stopped$(RESET)"
+	@echo ""
+	@echo "$(CYAN)[3/4] Stopping frontend services...$(RESET)"
+	@pkill -f "vite" 2>/dev/null || true
+	@sleep 1
+	@echo "$(GREEN)  ✓ Frontend services stopped$(RESET)"
+	@echo ""
+	@echo "$(CYAN)[4/4] Stopping infrastructure...$(RESET)"
+	@$(MAKE) infra-down
+	@echo "$(GREEN)  ✓ Infrastructure stopped$(RESET)"
+	@echo ""
+	@echo "$(GREEN)=========================================$(RESET)"
+	@echo "$(GREEN)Full stack stopped!$(RESET)"
+	@echo "$(GREEN)=========================================$(RESET)"
 
 # ==========================================================
 # Frontend Development Servers
@@ -443,6 +562,70 @@ dev-wf-worker: check-env
 		DATABASE_URL=postgresql+asyncpg://tgo:tgo@localhost:5432/tgo \
 		AI_SERVICE_URL=http://localhost:$(AI_PORT) \
 		poetry run celery -A celery_app.celery worker --loglevel=info -Q workflow
+
+# ==========================================================
+# Worker Management Commands
+# ==========================================================
+.PHONY: start-rag-worker-if-needed start-wf-worker-if-needed check-workers-status
+
+start-rag-worker-if-needed:
+	@echo "$(CYAN)Checking RAG worker status...$(RESET)"
+	@if pgrep -f "celery.*src.rag_service.tasks.celery_app.*worker" >/dev/null; then \
+		echo "$(YELLOW)  RAG worker already running, skip$(RESET)"; \
+	else \
+		echo "$(CYAN)  Starting RAG worker...$(RESET)"; \
+		$(MAKE) dev-rag-worker > /tmp/tgo-rag-worker.log 2>&1 & \
+		sleep 2; \
+		if pgrep -f "celery.*src.rag_service.tasks.celery_app.*worker" >/dev/null; then \
+			echo "$(GREEN)  ✓ RAG worker started$(RESET)"; \
+		else \
+			echo "$(RED)  ✗ RAG worker failed to start (check /tmp/tgo-rag-worker.log)$(RESET)"; \
+		fi; \
+	fi
+
+start-wf-worker-if-needed:
+	@echo "$(CYAN)Checking Workflow worker status...$(RESET)"
+	@if pgrep -f "celery.*celery_app.celery.*worker" >/dev/null; then \
+		echo "$(YELLOW)  Workflow worker already running, skip$(RESET)"; \
+	else \
+		echo "$(CYAN)  Starting Workflow worker...$(RESET)"; \
+		$(MAKE) dev-wf-worker > /tmp/tgo-wf-worker.log 2>&1 & \
+		sleep 2; \
+		if pgrep -f "celery.*celery_app.celery.*worker" >/dev/null; then \
+			echo "$(GREEN)  ✓ Workflow worker started$(RESET)"; \
+		else \
+			echo "$(RED)  ✗ Workflow worker failed to start (check /tmp/tgo-wf-worker.log)$(RESET)"; \
+		fi; \
+	fi
+
+check-workers-status:
+	@echo "  RAG Worker:     $$(if pgrep -f 'celery.*src.rag_service.tasks.celery_app.*worker' >/dev/null; then echo '$(GREEN)✓ Running$(RESET)'; else echo '$(RED)✗ Not Running$(RESET)'; fi)"
+	@echo "  Workflow Worker: $$(if pgrep -f 'celery.*celery_app.celery.*worker' >/dev/null; then echo '$(GREEN)✓ Running$(RESET)'; else echo '$(RED)✗ Not Running$(RESET)'; fi)"
+
+.PHONY: workers-start workers-stop workers-restart workers-logs workers-status
+
+workers-start:
+	@echo "$(CYAN)Starting all Celery workers...$(RESET)"
+	@$(MAKE) start-rag-worker-if-needed
+	@$(MAKE) start-wf-worker-if-needed
+
+workers-stop:
+	@echo "$(CYAN)Stopping all Celery workers...$(RESET)"
+	@pkill -f "celery -A src.rag_service.tasks.celery_app worker" 2>/dev/null || echo "  RAG worker not running"
+	@pkill -f "celery -A celery_app.celery worker" 2>/dev/null || echo "  Workflow worker not running"
+	@echo "$(GREEN)Workers stopped$(RESET)"
+
+workers-restart: workers-stop workers-start
+
+workers-logs:
+	@echo "$(CYAN)Worker logs (last 50 lines):$(RESET)"
+	@echo "--- RAG Worker ---"
+	@tail -n 50 /tmp/tgo-rag-worker.log 2>/dev/null || echo "No RAG worker log found"
+	@echo ""
+	@echo "--- Workflow Worker ---"
+	@tail -n 50 /tmp/tgo-wf-worker.log 2>/dev/null || echo "No Workflow worker log found"
+
+workers-status: check-workers-status
 
 # ==========================================================
 # Utility Commands
