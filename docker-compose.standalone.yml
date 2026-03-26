@@ -4,6 +4,8 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: tgo-postgres
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-tgo}
       POSTGRES_USER: ${POSTGRES_USER:-tgo}
@@ -37,6 +39,8 @@ services:
   wukongim:
     image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2.2.4-dev
     container_name: tgo-wukongim
+    env_file:
+      - .env
     environment:
       WK_CLUSTER_NODEID: 1001
       WK_CLUSTER_SERVERADDR: wukongim:11110
@@ -64,6 +68,8 @@ services:
   tgo-rag:
     image: ghcr.io/tgoai/tgo/tgo-rag:latest
     container_name: tgo-rag
+    env_file:
+      - .env
     environment:
       PORT: 8082
       REDIS_URL: redis://redis:6379/2
@@ -92,6 +98,8 @@ services:
     image: ghcr.io/tgoai/tgo/tgo-rag:latest
     container_name: tgo-rag-worker
     hostname: tgo-rag-worker
+    env_file:
+      - .env
     environment:
       PORT: 8082
       REDIS_URL: redis://redis:6379/2
@@ -115,6 +123,8 @@ services:
   tgo-rag-beat:
     image: ghcr.io/tgoai/tgo/tgo-rag:latest
     container_name: tgo-rag-beat
+    env_file:
+      - .env
     environment:
       PORT: 8082
       REDIS_URL: redis://redis:6379/2
@@ -136,6 +146,8 @@ services:
   tgo-ai:
     image: ghcr.io/tgoai/tgo/tgo-ai:latest
     container_name: tgo-ai
+    env_file:
+      - .env
     environment:
       PORT: 8081
       REDIS_URL: redis://redis:6379/1
@@ -171,6 +183,8 @@ services:
   tgo-plugin-runtime:
     image: ghcr.io/tgoai/tgo/tgo-plugin-runtime:latest
     container_name: tgo-plugin-runtime
+    env_file:
+      - .env
     environment:
       PORT: 8090
       PLUGIN_TCP_PORT: 8005
@@ -196,6 +210,8 @@ services:
   tgo-device-control:
     image: ghcr.io/tgoai/tgo/tgo-device-control:latest
     container_name: tgo-device-control
+    env_file:
+      - .env
     environment:
       PORT: 8085
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
@@ -225,6 +241,8 @@ services:
   tgo-workflow:
     image: ghcr.io/tgoai/tgo/tgo-workflow:latest
     container_name: tgo-workflow
+    env_file:
+      - .env
     environment:
       REDIS_URL: redis://redis:6379/2
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
@@ -250,6 +268,8 @@ services:
   tgo-workflow-worker:
     image: ghcr.io/tgoai/tgo/tgo-workflow:latest
     container_name: tgo-workflow-worker
+    env_file:
+      - .env
     environment:
       REDIS_URL: redis://redis:6379/2
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
@@ -272,6 +292,8 @@ services:
   tgo-api:
     image: ghcr.io/tgoai/tgo/tgo-api:latest
     container_name: tgo-api
+    env_file:
+      - .env
     environment:
       PORT: 8000
       REDIS_URL: redis://redis:6379/0
@@ -325,6 +347,8 @@ services:
   tgo-platform:
     image: ghcr.io/tgoai/tgo/tgo-platform:latest
     container_name: tgo-platform
+    env_file:
+      - .env
     environment:
       PORT: 8003
       REDIS_URL: redis://redis:6379/0
@@ -352,6 +376,8 @@ services:
   tgo-web:
     image: ghcr.io/tgoai/tgo/tgo-web:latest
     container_name: tgo-web
+    env_file:
+      - .env
     ports:
       - "18080:80"
     healthcheck:
@@ -367,6 +393,8 @@ services:
   tgo-widget-js:
     image: ghcr.io/tgoai/tgo/tgo-widget-js:latest
     container_name: tgo-widget-js
+    env_file:
+      - .env
     ports:
       - "18081:80"
     healthcheck:
