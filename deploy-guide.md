@@ -33,7 +33,9 @@ vi .env
 | `SERVER_HOST` | 服务器公网IP | `123.45.67.89` |
 | `POSTGRES_PASSWORD` | 数据库密码 | `YourStrongPassword123!` |
 | `VITE_API_BASE_URL` | API地址 | `https://your-domain.com/api` |
-| `WUKONGIM_WSS_ADDR` | WebSocket地址 | `wss://your-domain.com/ws` |
+| `WUKONGIM_WSS_ADDR` | WebSocket地址 (HTTPS下必须用wss) | `wss://your-domain.com/ws` |
+
+> ⚠️ **重要**: 如果你的网站使用 HTTPS，WebSocket 地址必须使用 `wss://` 协议，否则浏览器会阻止 WebSocket 连接。
 
 ### 3. 执行部署脚本
 

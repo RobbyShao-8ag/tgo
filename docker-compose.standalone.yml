@@ -190,6 +190,7 @@ services:
       PLUGIN_TCP_PORT: 8005
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
       AI_SERVICE_URL: http://tgo-ai:8081
+      SECRET_KEY: ${SECRET_KEY}
       LOG_LEVEL: DEBUG
     depends_on:
       - tgo-ai
@@ -218,6 +219,7 @@ services:
       REDIS_URL: redis://redis:6379/3
       AI_SERVICE_URL: http://tgo-ai:8081
       API_SERVICE_URL: http://tgo-api:8000
+      SECRET_KEY: ${SECRET_KEY}
       LOG_LEVEL: DEBUG
     depends_on:
       postgres:
