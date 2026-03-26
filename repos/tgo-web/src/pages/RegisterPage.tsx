@@ -12,6 +12,7 @@ import type { RegisterFormData, AuthValidationErrors } from '@/types';
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const brandName = t('brand.name');
   const { register, isLoading } = useAuthStore();
   const [formData, setFormData] = useState<RegisterFormData>({
     email: '',
@@ -120,8 +121,8 @@ const RegisterPage: React.FC = () => {
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <Link to="/" className="flex items-center space-x-2">
-            <img src="/logo.svg" alt="Tgo CS Logo" className="w-10 h-10" />
-            <span className="font-semibold text-2xl text-gray-800 dark:text-gray-200">{t('brand.name')}</span>
+            <img src="/logo.svg" alt={`${brandName} Logo`} className="w-10 h-10 object-contain" />
+            <span className="font-semibold text-2xl text-gray-800 dark:text-gray-200">{brandName}</span>
           </Link>
         </div>
 

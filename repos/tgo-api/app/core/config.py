@@ -319,6 +319,10 @@ class Settings(BaseSettings):
         default="http://localhost:5001",
         description="URL of the WuKongIM service"
     )
+    WUKONGIM_WSS_ADDR: Optional[str] = Field(
+        default=None,
+        description="Public WSS address exposed to browsers, e.g. wss://ws.example.com"
+    )
     WUKONGIM_SERVICE_TIMEOUT: int = Field(
         default=10,
         description="Timeout for WuKongIM service requests in seconds"

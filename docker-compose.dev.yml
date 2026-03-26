@@ -4,7 +4,6 @@
 #
 # Usage: make infra-up (or: docker compose -f docker-compose.dev.yml up -d)
 
-name: tgo-dev
 
 services:
   # Postgres with pgvector extension for RAG
@@ -15,8 +14,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-tgo}
       POSTGRES_USER: ${POSTGRES_USER:-tgo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tgo}
-    volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+#    volumes:
+#      - ./data/postgres:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -31,8 +30,8 @@ services:
     image: redis:7-alpine
     container_name: tgo-dev-redis
     command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - ./data/redis:/data
+ #   volumes:
+ #     - ./data/redis:/data
     ports:
       - "6379:6379"
     healthcheck:
@@ -56,8 +55,8 @@ services:
       WK_EXTERNAL_IP: ${SERVER_HOST:-127.0.0.1}
       # Point to local tgo-api running on host machine
       WK_WEBHOOK_HTTPADDR: http://host.docker.internal:8000/v1/integrations/wukongim/webhook
-    volumes:
-      - ./data/wukongim:/root/wukongim
+  #  volumes:
+  #    - ./data/wukongim:/root/wukongim
     ports:
       - "5001:5001"   # api
       - "5100:5100"   # tcp

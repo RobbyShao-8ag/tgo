@@ -1,0 +1,387 @@
+name: tgo-standalone
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: tgo-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tgo}
+      POSTGRES_USER: ${POSTGRES_USER:-tgo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tgo}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: tgo-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  wukongim:
+    image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2.2.4-dev
+    container_name: tgo-wukongim
+    environment:
+      WK_CLUSTER_NODEID: 1001
+      WK_CLUSTER_SERVERADDR: wukongim:11110
+      WK_CLUSTER_APIURL: http://wukongim:5001
+      WK_INTRANET_TCPADDR: wukongim:5100
+      WK_MODE: release
+      WK_EXTERNAL_IP: ${SERVER_HOST:-127.0.0.1}
+      WK_WEBHOOK_HTTPADDR: http://tgo-api:8000/v1/integrations/wukongim/webhook
+    volumes:
+      - ./data/wukongim:/root/wukongim
+    ports:
+      - "5001:5001"
+      - "5100:5100"
+      - "5200:5200"
+      - "5300:5300"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -Y off -O /dev/null http://localhost:5001/health > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    restart: always
+    networks:
+      - tgo-network
+
+  tgo-rag:
+    image: ghcr.io/tgoai/tgo/tgo-rag:latest
+    container_name: tgo-rag
+    environment:
+      PORT: 8082
+      REDIS_URL: redis://redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/tgo-rag/uploads:/app/uploads
+    command: >
+      sh -c "alembic upgrade head && uvicorn src.rag_service.main:app --host 0.0.0.0 --port 8082"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-rag-worker:
+    image: ghcr.io/tgoai/tgo/tgo-rag:latest
+    container_name: tgo-rag-worker
+    hostname: tgo-rag-worker
+    environment:
+      PORT: 8082
+      REDIS_URL: redis://redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tgo-rag:
+        condition: service_started
+    volumes:
+      - ./data/tgo-rag/uploads:/app/uploads
+    command: >
+      sh -c "celery -A src.rag_service.tasks.celery_app worker --loglevel=debug --hostname=worker@tgo-rag-worker -Q document_processing,embedding,website_crawling,qa_processing,celery"
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-rag-beat:
+    image: ghcr.io/tgoai/tgo/tgo-rag:latest
+    container_name: tgo-rag-beat
+    environment:
+      PORT: 8082
+      REDIS_URL: redis://redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tgo-rag:
+        condition: service_started
+    command: >
+      sh -c "celery -A src.rag_service.tasks.celery_app beat --loglevel=debug"
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-ai:
+    image: ghcr.io/tgoai/tgo/tgo-ai:latest
+    container_name: tgo-ai
+    environment:
+      PORT: 8081
+      REDIS_URL: redis://redis:6379/1
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      API_SERVICE_URL: http://tgo-api:8000
+      RAG_SERVICE_URL: http://tgo-rag:8082
+      WORKFLOW_SERVICE_URL: http://tgo-workflow:8000
+      PLUGIN_RUNTIME_URL: http://tgo-plugin-runtime:8090
+      DEVICE_CONTROL_SERVICE_URL: http://tgo-device-control:8085
+      SKILLS_BASE_DIR: /data/skills
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      tgo-rag:
+        condition: service_started
+    volumes:
+      - ./data/skills:/data/skills
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8081/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-plugin-runtime:
+    image: ghcr.io/tgoai/tgo/tgo-plugin-runtime:latest
+    container_name: tgo-plugin-runtime
+    environment:
+      PORT: 8090
+      PLUGIN_TCP_PORT: 8005
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      AI_SERVICE_URL: http://tgo-ai:8081
+      LOG_LEVEL: DEBUG
+    depends_on:
+      - tgo-ai
+      - postgres
+    volumes:
+      - ./data/plugins:/var/lib/tgo/plugins
+      - plugin-socket:/var/run/tgo
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8090/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-device-control:
+    image: ghcr.io/tgoai/tgo/tgo-device-control:latest
+    container_name: tgo-device-control
+    environment:
+      PORT: 8085
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      REDIS_URL: redis://redis:6379/3
+      AI_SERVICE_URL: http://tgo-ai:8081
+      API_SERVICE_URL: http://tgo-api:8000
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tgo-ai:
+        condition: service_started
+    volumes:
+      - ./data/tgo-device-control/screenshots:/var/lib/tgo/device-control/screenshots
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8085/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-workflow:
+    image: ghcr.io/tgoai/tgo/tgo-workflow:latest
+    container_name: tgo-workflow
+    environment:
+      REDIS_URL: redis://redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      AI_SERVICE_URL: http://tgo-ai:8081
+      ALLOWED_ORIGINS: '["*"]'
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-workflow-worker:
+    image: ghcr.io/tgoai/tgo/tgo-workflow:latest
+    container_name: tgo-workflow-worker
+    environment:
+      REDIS_URL: redis://redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      AI_SERVICE_URL: http://tgo-ai:8081
+      ALLOWED_ORIGINS: '["*"]'
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tgo-workflow:
+        condition: service_started
+    command: >
+      sh -c "celery -A celery_app.celery worker --loglevel=debug -Q workflow"
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-api:
+    image: ghcr.io/tgoai/tgo/tgo-api:latest
+    container_name: tgo-api
+    environment:
+      PORT: 8000
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+      PLATFORM_SERVICE_URL: http://tgo-platform:8003
+      PLATFORM_SERVICE_TIMEOUT: 30
+      AI_SERVICE_URL: http://tgo-ai:8081
+      AI_SERVICE_TIMEOUT: 30
+      RAG_SERVICE_URL: http://tgo-rag:8082
+      RAG_SERVICE_TIMEOUT: 30
+      PLUGIN_RUNTIME_URL: http://tgo-plugin-runtime:8090
+      DEVICE_CONTROL_SERVICE_URL: http://tgo-device-control:8085
+      DEVICE_CONTROL_SERVICE_TIMEOUT: 60
+      WORKFLOW_SERVICE_URL: http://tgo-workflow:8000
+      WORKFLOW_SERVICE_TIMEOUT: 60
+      WUKONGIM_SERVICE_URL: http://wukongim:5001
+      WUKONGIM_SERVICE_TIMEOUT: 10
+      WUKONGIM_ENABLED: "true"
+      WUKONGIM_DEVICE_FLAG: 1
+      WUKONGIM_DEVICE_LEVEL: 1
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tgo-ai:
+        condition: service_started
+      tgo-rag:
+        condition: service_started
+      tgo-workflow:
+        condition: service_started
+      wukongim:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/tgo-api/uploads:/app/uploads
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-platform:
+    image: ghcr.io/tgoai/tgo/tgo-platform:latest
+    container_name: tgo-platform
+    environment:
+      PORT: 8003
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@postgres:5432/${POSTGRES_DB:-tgo}
+      API_BASE_URL: http://tgo-api:8000
+      SSE_BACKPRESSURE_LIMIT: 1000
+      REQUEST_TIMEOUT_SECONDS: 120
+      LOG_LEVEL: DEBUG
+    depends_on:
+      - tgo-api
+      - postgres
+      - redis
+      - wukongim
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8003"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8003/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-web:
+    image: ghcr.io/tgoai/tgo/tgo-web:latest
+    container_name: tgo-web
+    ports:
+      - "18080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+  tgo-widget-js:
+    image: ghcr.io/tgoai/tgo/tgo-widget-js:latest
+    container_name: tgo-widget-js
+    ports:
+      - "18081:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - tgo-network
+
+volumes:
+  plugin-socket:
+
+networks:
+  tgo-network:
+    driver: bridge

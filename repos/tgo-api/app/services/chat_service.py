@@ -151,6 +151,8 @@ async def forward_ai_event_to_wukongim(
     channel_type: int,
     client_msg_no: str,
     from_uid: str,
+    *,
+    allow_completion_content: bool = False,
 ) -> Optional[str]:
     """Forward AI event to WuKongIM using the new Stream API.
 
@@ -199,6 +201,24 @@ async def forward_ai_event_to_wukongim(
                 return chunk_str
 
         elif event_type in {"team_run_completed"}:
+            # Some runtime paths only provide the final answer on completion,
+            # without prior team_run_content chunks. In that case we need to
+            # emit one last delta before closing the stream.
+            completion_text = data.get("content") or data.get("text")
+            if allow_completion_content and completion_text is not None:
+                completion_str = str(completion_text)
+                if completion_str:
+                    await wukongim_client.send_stream_event(
+                        channel_id=channel_id,
+                        channel_type=channel_type,
+                        client_msg_no=client_msg_no,
+                        event_id=uuid4().hex,
+                        event_type="stream.delta",
+                        event_key="main",
+                        from_uid=from_uid,
+                        payload={"kind": "text", "delta": completion_str},
+                    )
+
             # Close the stream channel, then finish the entire message
             await wukongim_client.send_stream_event(
                 channel_id=channel_id,
@@ -218,8 +238,10 @@ async def forward_ai_event_to_wukongim(
                 event_key="main",
                 from_uid=from_uid,
             )
+            if allow_completion_content and completion_text is not None:
+                return str(completion_text)
 
-        elif event_type == "team_run_failed":
+        elif event_type in {"team_run_failed", "workflow_failed"}:
             error_message = data.get("error") or "AI processing failed"
             await wukongim_client.send_stream_event(
                 channel_id=channel_id,
@@ -274,6 +296,9 @@ async def process_ai_stream_to_wukongim(
         ):
             # Forward to WuKongIM
             event_type = data.get("event_type")
+            allow_completion_content = (
+                event_type == "team_run_completed" and not bool(full_content)
+            )
             content_chunk = await forward_ai_event_to_wukongim(
                 event_type=event_type,
                 event_data=data,
@@ -281,6 +306,7 @@ async def process_ai_stream_to_wukongim(
                 channel_type=channel_type,
                 client_msg_no=client_msg_no,
                 from_uid=from_uid,
+                allow_completion_content=allow_completion_content,
             )
             if content_chunk:
                 full_content += content_chunk
@@ -336,6 +362,9 @@ async def handle_ai_response_non_stream(
             expected_output=expected_output,
         ):
             event_type = data.get("event_type")
+            allow_completion_content = (
+                event_type == "team_run_completed" and not bool(full_content)
+            )
             content_chunk = await forward_ai_event_to_wukongim(
                 event_type=event_type,
                 event_data=data,
@@ -343,6 +372,7 @@ async def handle_ai_response_non_stream(
                 channel_type=channel_type,
                 client_msg_no=client_msg_no,
                 from_uid=from_uid,
+                allow_completion_content=allow_completion_content,
             )
             if content_chunk:
                 full_content += content_chunk

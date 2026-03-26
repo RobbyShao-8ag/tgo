@@ -147,6 +147,12 @@ async def process_qa_pair_async(
             project_key=str(project_id),
             embedding_client=embedding_service.embeddings_client,
         )
+        if not vector_ids or not vector_ids[0]:
+            raise DocumentProcessingError(
+                "Vector store write returned empty vector ID",
+                str(qa_pair_id),
+                ProcessingStep.GENERATING_EMBEDDINGS,
+            )
         
         # Update QA pair status
         async with get_db_session() as db:

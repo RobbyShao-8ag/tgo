@@ -36,7 +36,7 @@ services:
 
   # WuKongIM service
   wukongim:
-    image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2.2.3-dev
+    image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2.2.4-dev
     container_name: tgo-wukongim
     env_file:
       - .env
@@ -52,6 +52,7 @@ services:
     volumes:
       - ./data/wukongim:/root/wukongim
     ports:
+      - "5001:5001"   # http api
       - "5100:5100"   # tcp
       - "5200:5200"   # websocket
       - "5300:5300"   # admin
@@ -155,8 +156,12 @@ services:
     depends_on:
       - postgres
       - redis
+    ports:
+      - "8082:8082"
     volumes:
       - ./data/tgo-rag/uploads:/app/uploads
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8082"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:8082/health || exit 1"]
       interval: 30s
@@ -190,6 +195,8 @@ services:
         condition: service_started
       tgo-rag:
         condition: service_started
+    ports:
+      - "8081:8081"
     volumes:
       - ./data/skills:/data/skills
     command: >
@@ -298,6 +305,7 @@ services:
       WUKONGIM_ENABLED: "true"
       WUKONGIM_DEVICE_FLAG: 1
       WUKONGIM_DEVICE_LEVEL: 1
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ./data/tgo-api/uploads:/app/uploads
     healthcheck:
@@ -322,6 +330,7 @@ services:
       API_BASE_URL: http://tgo-api:8000
       SSE_BACKPRESSURE_LIMIT: 1000
       REQUEST_TIMEOUT_SECONDS: 120
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8003"
     depends_on:
       - tgo-api
       - postgres
@@ -347,6 +356,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tgo}:${POSTGRES_PASSWORD:-tgo}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-tgo}
       AI_SERVICE_URL: http://tgo-ai:8081
       ALLOWED_ORIGINS: '["*"]'
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       postgres:
         condition: service_healthy

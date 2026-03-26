@@ -245,6 +245,8 @@ class AgnoTeamBuilder:
         )
 
         team_instructions = settings.supervisor_runtime.team_instructions
+        team_custom_instruction = (context.team.instruction or "").strip()
+        markdown_enabled = config.get("markdown", True)
 
         ui_mode = context.ui_mode
 
@@ -259,6 +261,21 @@ class AgnoTeamBuilder:
                 self._logger.debug("json-render schema injected into team instructions")
             except Exception as exc:  # noqa: BLE001
                 self._logger.warning("Failed to inject json-render schema", error=str(exc))
+
+        if team_custom_instruction:
+            team_instructions = (
+                f"{team_instructions}\n\n"
+                "### 当前团队专属要求\n"
+                f"{team_custom_instruction}"
+            )
+
+        if not markdown_enabled:
+            team_instructions = (
+                f"{team_instructions}\n\n"
+                "### 输出格式要求\n"
+                "本轮回复使用纯文本自然分段，不要使用 Markdown 标题、列表、表格、围栏代码块或其他 Markdown 语法，"
+                "除非用户明确要求保留原始 Markdown。"
+            )
 
         return {
             "members": members,
@@ -276,7 +293,7 @@ class AgnoTeamBuilder:
             "add_datetime_to_context": config.get("add_datetime_to_context", True),
             "add_location_to_context": config.get("add_location_to_context", False),
             "timezone_identifier": config.get("timezone_identifier"),
-            "markdown": config.get("markdown", True),
+            "markdown": markdown_enabled,
             "respond_directly": config.get("respond_directly", False),
             "stream_member_events": config.get("stream_member_events", True),
             "share_member_interactions": config.get("share_member_interactions", False),

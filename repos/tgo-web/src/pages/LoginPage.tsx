@@ -14,6 +14,7 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
+  const brandName = t('brand.name');
   const { login, isLoading } = useAuthStore();
   const [formData, setFormData] = useState<LoginFormData>({
     email: '',
@@ -164,8 +165,8 @@ const LoginPage: React.FC = () => {
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <Link to="/" className="flex items-center space-x-2">
-            <img src="/sstlogo.png" alt="SST Logo" className="w-30 h-10" />
-            <span className="font-semibold text-2xl text-gray-800 dark:text-gray-200">{t('brand.name')}</span>
+            <img src="/logo.svg" alt={`${brandName} Logo`} className="w-10 h-10 object-contain" />
+            <span className="font-semibold text-2xl text-gray-800 dark:text-gray-200">{brandName}</span>
           </Link>
         </div>
 

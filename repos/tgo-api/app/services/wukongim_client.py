@@ -282,11 +282,88 @@ class WuKongIMClient:
             },
         )
 
-        return await self._make_request(
-            method="POST",
-            endpoint="/message/event",
-            json_data=request_data,
-        )
+        try:
+            return await self._make_request(
+                method="POST",
+                endpoint="/message/event",
+                json_data=request_data,
+            )
+        except HTTPException as exc:
+            # Older WuKongIM deployments do not support /message/event yet.
+            # Fall back to legacy custom-event transport so streaming can
+            # continue to work without upgrading the IM node immediately.
+            if exc.status_code != 500:
+                raise
+
+            logger.warning(
+                "WuKongIM stream endpoint unavailable, falling back to legacy events",
+                extra={
+                    "channel_id": channel_id,
+                    "event_type": event_type,
+                    "client_msg_no": client_msg_no,
+                },
+            )
+            return await self._send_stream_event_legacy(
+                channel_id=channel_id,
+                channel_type=channel_type,
+                client_msg_no=client_msg_no,
+                event_type=event_type,
+                from_uid=from_uid,
+                payload=payload,
+            )
+
+    async def _send_stream_event_legacy(
+        self,
+        *,
+        channel_id: str,
+        channel_type: int,
+        client_msg_no: str,
+        event_type: str,
+        from_uid: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Fallback stream transport for WuKongIM versions without /message/event."""
+        if event_type == "stream.delta":
+            delta = ""
+            if payload is not None:
+                delta = str(payload.get("delta") or "")
+            if not delta:
+                return {}
+            return await self.send_event(
+                channel_id=channel_id,
+                channel_type=channel_type,
+                event_type="___TextMessageContent",
+                data=delta,
+                client_msg_no=client_msg_no,
+                from_uid=from_uid,
+            )
+
+        if event_type in {"stream.close", "stream.cancel"}:
+            return await self.send_event(
+                channel_id=channel_id,
+                channel_type=channel_type,
+                event_type="___TextMessageEnd",
+                data="",
+                client_msg_no=client_msg_no,
+                from_uid=from_uid,
+            )
+
+        if event_type == "stream.error":
+            error_message = ""
+            if payload is not None:
+                error_message = str(payload.get("error") or "")
+            return await self.send_event(
+                channel_id=channel_id,
+                channel_type=channel_type,
+                event_type="___TextMessageEnd",
+                data=error_message,
+                client_msg_no=client_msg_no,
+                from_uid=from_uid,
+            )
+
+        # stream.finish has no legacy equivalent; by the time it arrives,
+        # stream.close has already terminated the legacy stream.
+        return {}
 
     async def send_message(
         self,

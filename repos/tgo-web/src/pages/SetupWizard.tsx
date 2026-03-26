@@ -45,8 +45,9 @@ type SetupStep = 1 | 2 | 3 | 4;
  * Multi-step installation wizard for system initialization
  */
 const SetupWizard: React.FC = () => {
-  const navigate = useNavigate();
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const brandName = t('brand.name');
   const { checkSetupStatus } = useSetupStore();
 
   // Current step state
@@ -940,7 +941,7 @@ const SetupWizard: React.FC = () => {
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <img src="/logo.svg" alt="Tgo CS Logo" className="w-12 h-12" />
+            <img src="/logo.svg" alt={`${brandName} Logo`} className="w-12 h-12" />
           </div>
           <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-2">{t('setup.title')}</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400">{t('setup.subtitle')}</p>

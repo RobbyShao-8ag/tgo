@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.schemas.wukongim import WuKongIMRouteResponse
 from app.services.wukongim_client import wukongim_client
@@ -49,9 +50,14 @@ async def get_wukongim_route(
     
     try:
         result = await wukongim_client.get_route(uid=uid)
-        
+
+        # Prefer an explicit public WSS address when deployment terminates TLS
+        # on a reverse proxy instead of directly on the WuKongIM node.
+        if settings.WUKONGIM_WSS_ADDR:
+            result.wss_addr = settings.WUKONGIM_WSS_ADDR
+
         logger.info(f"Successfully retrieved route for uid: {uid}")
-        
+
         return result
         
     except HTTPException:

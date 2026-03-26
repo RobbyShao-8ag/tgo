@@ -201,7 +201,7 @@ class VectorStoreService:
                     logger.debug(f"Successfully processed batch {batch_num}/{total_batches} for project {project_key}")
                 except Exception as batch_error:
                     logger.error(f"Failed to process batch {batch_num}/{total_batches} for project {project_key}: {str(batch_error)}")
-                    all_vector_ids.extend([""] * len(batch_documents))
+                    raise
 
             logger.info(f"Completed batch processing for project {project_key}: {len(all_vector_ids)} total documents processed")
             return all_vector_ids
