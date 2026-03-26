@@ -317,6 +317,7 @@ services:
       WUKONGIM_ENABLED: "true"
       WUKONGIM_DEVICE_FLAG: 1
       WUKONGIM_DEVICE_LEVEL: 1
+      WUKONGIM_WSS_ADDR: ${WUKONGIM_WSS_ADDR}
       LOG_LEVEL: DEBUG
     depends_on:
       postgres:
