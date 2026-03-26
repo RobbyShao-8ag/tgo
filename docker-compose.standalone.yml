@@ -292,7 +292,7 @@ services:
       - tgo-network
 
   tgo-api:
-    image: ghcr.io/tgoai/tgo/tgo-api:latest
+    image: tgo-api-local:latest
     container_name: tgo-api
     env_file:
       - .env
