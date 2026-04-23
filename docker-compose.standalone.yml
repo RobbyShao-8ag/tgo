@@ -377,7 +377,7 @@ services:
       - tgo-network
 
   tgo-web:
-    image: ghcr.io/tgoai/tgo/tgo-web:latest
+    image: tgo-web-local:latest
     container_name: tgo-web
     env_file:
       - .env
